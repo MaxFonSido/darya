@@ -109,6 +109,31 @@
     line-height:1.6;
   }
 
+  /* ---- tabs ---- */
+  .tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:1.2rem;
+  }
+  .tab-btn{
+    flex:1;
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    font-family:var(--font-mono);
+    font-size:12px;
+    letter-spacing:0.03em;
+    padding:10px 12px;
+    border-radius:4px;
+    cursor:pointer;
+    text-align:center;
+  }
+  .tab-btn.active{
+    border-color:var(--gold-dim);
+    color:var(--gold);
+    background:var(--surface-raised);
+  }
+
   /* ---- overall progress ---- */
   .progress-bar-outer{
     position:sticky;
@@ -274,8 +299,10 @@
     <p class="route-eyebrow">Route &amp; timing</p>
     <div class="route-line" id="routeLine"></div>
     <h1>Almaty trip checklist</h1>
-    <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — changes save automatically on this device.</p>
+    <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — changes save automatically for both of you, in real time.</p>
   </div>
+
+  <div class="tabs" id="tabNav"></div>
 
   <div class="progress-bar-outer">
     <div class="progress-row">
@@ -288,101 +315,170 @@
   <div id="categories"></div>
 
   <footer>
-    <span>Saved automatically on this device</span>
+    <span>Saved automatically · shared with Zarina</span>
     <button class="reset-btn" id="resetBtn">Reset all</button>
   </footer>
 
 </div>
 
-<script>
-const DATA = [
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD-H0JUF-O0ufKc9GRQS0OybhPrdqeH0kY",
+  authDomain: "almaty-checklist.firebaseapp.com",
+  projectId: "almaty-checklist",
+  storageBucket: "almaty-checklist.firebasestorage.app",
+  messagingSenderId: "307639070106",
+  appId: "1:307639070106:web:c71151af3cdb70621a1e23"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const stateDocRef = doc(db, "checklist", "shared");
+const TABS = [
   {
-    code:'DOC', title:'Documents & legal', urgent:true,
-    note:'Handle before flying — some steps take weeks',
-    items:[
-      'Passports — both of us',
-      "Extra passport photos (for baby's later)",
-      'Marriage certificate — original + copies',
-      'Surrogacy contract / gestational carrier agreement',
-      'Kazakhstan-based surrogacy or fertility lawyer contact',
-      'US Embassy Almaty consular agency info (CRBA process)',
-      'DNA test arrangement confirmed for citizenship proof',
-      'Copies of our own birth certificates',
-      'Travel & medical insurance details',
-      "Surrogate's medical contacts & hospital info"
+    id:'packing', label:'Packing checklist',
+    categories:[
+      {
+        code:'DOC', title:'Documents & legal', urgent:true,
+        note:'Handle before flying — some steps take weeks',
+        items:[
+          'Passports — both of us',
+          "Extra passport photos (for baby's later)",
+          'Marriage certificate — original + copies',
+          'Surrogacy contract / gestational carrier agreement',
+          'Kazakhstan-based surrogacy or fertility lawyer contact',
+          'US Embassy Almaty consular agency info (CRBA process)',
+          'DNA test arrangement confirmed for citizenship proof',
+          'Copies of our own birth certificates',
+          'Travel & medical insurance details',
+          "Surrogate's medical contacts & hospital info"
+        ]
+      },
+      {
+        code:'FED', title:'Baby feeding',
+        items:[
+          'Kabrita / chosen formula — full supply',
+          'Bottles + extra nipples',
+          'Formula travel dispenser containers',
+          'Induced lactation supplements/meds (if applicable)',
+          'Pump + extra flanges + storage bags',
+          'Manual backup pump'
+        ]
+      },
+      {
+        code:'GER', title:'Baby gear',
+        items:[
+          'Going-home outfit',
+          'Several newborn / 0–3mo outfits (light layers)',
+          'Swaddles + muslin blankets',
+          'Burp cloths',
+          'Car seat (confirm what\u2019s provided locally)',
+          'Baby carrier / wrap for Taraz travel',
+          'Diapers — preferred brand, generous supply',
+          'Travel wipes',
+          'Digital thermometer',
+          'Infant nail clippers',
+          'Gas drops',
+          'Baby-safe fever reducer'
+        ]
+      },
+      {
+        code:'HLT', title:'Health & comfort',
+        items:[
+          'Personal medications — full 3-month supply',
+          'Copies of prescriptions',
+          'Postpartum-adjacent recovery items',
+          'Easy nursing-style tops (if inducing lactation)',
+          'Vitamins/supplements for lactation protocol',
+          'Basic first aid kit',
+          'Electrolyte packets'
+        ]
+      },
+      {
+        code:'SZN', title:'Clothing by season',
+        seasons:[
+          {label:'August', items:['Light layers, breathable fabrics','One light rain jacket']},
+          {label:'September', items:['Sweaters, a warm layer','Closed-toe shoes']},
+          {label:'October', items:['Real winter coat','Gloves','Waterproof boots']}
+        ]
+      },
+      {
+        code:'TRZ', title:'For the Taraz visit',
+        items:[
+          'Gift for family — something distinctly American',
+          'Modest, comfortable clothing for family visits',
+          'Baby photos/updates to share'
+        ]
+      },
+      {
+        code:'EXT', title:'Practical extras',
+        items:[
+          'Universal power adapter (Type C/F, 220V)',
+          'Unlocked phone or local SIM plan',
+          'Cash in tenge for outside Almaty'
+        ]
+      }
     ]
   },
   {
-    code:'FED', title:'Baby feeding',
-    items:[
-      'Kabrita / chosen formula — full supply',
-      'Bottles + extra nipples',
-      'Formula travel dispenser containers',
-      'Induced lactation supplements/meds (if applicable)',
-      'Pump + extra flanges + storage bags',
-      'Manual backup pump'
-    ]
-  },
-  {
-    code:'GER', title:'Baby gear',
-    items:[
-      'Going-home outfit',
-      'Several newborn / 0–3mo outfits (light layers)',
-      'Swaddles + muslin blankets',
-      'Burp cloths',
-      'Car seat (confirm what\u2019s provided locally)',
-      'Baby carrier / wrap for Taraz travel',
-      'Diapers — preferred brand, generous supply',
-      'Travel wipes',
-      'Digital thermometer',
-      'Infant nail clippers',
-      'Gas drops',
-      'Baby-safe fever reducer'
-    ]
-  },
-  {
-    code:'HLT', title:'Health & comfort',
-    items:[
-      'Personal medications — full 3-month supply',
-      'Copies of prescriptions',
-      'Postpartum-adjacent recovery items',
-      'Easy nursing-style tops (if inducing lactation)',
-      'Vitamins/supplements for lactation protocol',
-      'Basic first aid kit',
-      'Electrolyte packets'
-    ]
-  },
-  {
-    code:'SZN', title:'Clothing by season',
-    seasons:[
-      {label:'August', items:['Light layers, breathable fabrics','One light rain jacket']},
-      {label:'September', items:['Sweaters, a warm layer','Closed-toe shoes']},
-      {label:'October', items:['Real winter coat','Gloves','Waterproof boots']}
-    ]
-  },
-  {
-    code:'TRZ', title:'For the Taraz visit',
-    items:[
-      'Gift for family — something distinctly American',
-      'Modest, comfortable clothing for family visits',
-      'Baby photos/updates to share'
-    ]
-  },
-  {
-    code:'EXT', title:'Practical extras',
-    items:[
-      'Universal power adapter (Type C/F, 220V)',
-      'Unlocked phone or local SIM plan',
-      'Cash in tenge for outside Almaty'
+    id:'travelday', label:'Travel day',
+    categories:[
+      {
+        code:'TRV', title:'Take with you on travel day',
+        items:[
+          'Toothbrush, toothpaste, shaver, perfume',
+          'External battery charger',
+          'Sport / dress / dance shoes',
+          'Eyeglasses and sunglasses',
+          'Underwear, socks, belt',
+          'Casual / dress shirt',
+          'Casual / dress pants, pajamas',
+          'Mobile chargers (Android/iPhone — car chargers)',
+          'Mobile hanger from the car',
+          'Watch charger',
+          'Health and gym stuff, vitamins',
+          'Warm clothing',
+          'Laptop and charger',
+          'Shampoo, towel',
+          'Headphones',
+          'Passport, passport card',
+          'Swimwear',
+          'Umbrella',
+          'Sandals',
+          'Cash',
+          'Sleep pill',
+          'USB hub',
+          'Rain jacket',
+          'Replace watch band',
+          'Souvenir',
+          'Hat',
+          'DJI camera',
+          'Capital One credit card',
+          'Kindle',
+          'EZPass',
+          'Speaker',
+          'Shoulder massager',
+          'V',
+          'Pain killer',
+          'Book',
+          'Kidney stone medicine',
+          'Speaker',
+          'Certificate of naturalization'
+        ]
+      }
     ]
   }
 ];
 
 const STORAGE_KEY = 'checklist-state';
 let state = {};
+let activeTab = TABS[0].id;
 
-function slug(catCode, text){
-  return catCode + ':' + text.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
+function slug(tabId, catCode, text){
+  return tabId + ':' + catCode + ':' + text.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
 }
 
 function checkIcon(){
@@ -401,16 +497,27 @@ function render(){
     '<div class="stop ' + (s.active?'active':'') + '"><div class="stop-dot"></div><div class="stop-code">' + s.code + '</div></div>'
   ).join('');
 
+  const tabNav = document.getElementById('tabNav');
+  tabNav.innerHTML = '';
+  TABS.forEach(tab => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (tab.id === activeTab ? ' active' : '');
+    btn.textContent = tab.label;
+    btn.addEventListener('click', () => { activeTab = tab.id; render(); });
+    tabNav.appendChild(btn);
+  });
+
+  const currentTab = TABS.find(t => t.id === activeTab);
   const container = document.getElementById('categories');
   container.innerHTML = '';
 
-  DATA.forEach(cat => {
+  currentTab.categories.forEach(cat => {
     const catEl = document.createElement('div');
     catEl.className = 'category' + (cat.urgent ? ' urgent' : '');
 
     let allIds = [];
-    if(cat.items){ allIds = cat.items.map(t => slug(cat.code, t)); }
-    if(cat.seasons){ cat.seasons.forEach(s => s.items.forEach(t => allIds.push(slug(cat.code, s.label+'-'+t)))); }
+    if(cat.items){ allIds = cat.items.map(t => slug(activeTab, cat.code, t)); }
+    if(cat.seasons){ cat.seasons.forEach(s => s.items.forEach(t => allIds.push(slug(activeTab, cat.code, s.label+'-'+t)))); }
     const doneCount = allIds.filter(id => state[id]).length;
 
     const head = document.createElement('div');
@@ -426,7 +533,7 @@ function render(){
       const itemsWrap = document.createElement('div');
       itemsWrap.className = 'items';
       cat.items.forEach(text => {
-        itemsWrap.appendChild(makeItemRow(cat.code, text, slug(cat.code, text)));
+        itemsWrap.appendChild(makeItemRow(text, slug(activeTab, cat.code, text)));
       });
       catEl.appendChild(itemsWrap);
     }
@@ -443,7 +550,7 @@ function render(){
         itemsWrap.className = 'items';
         itemsWrap.style.padding = '0';
         s.items.forEach(text => {
-          itemsWrap.appendChild(makeItemRow(cat.code, text, slug(cat.code, s.label+'-'+text)));
+          itemsWrap.appendChild(makeItemRow(text, slug(activeTab, cat.code, s.label+'-'+text)));
         });
         grp.appendChild(itemsWrap);
         catEl.appendChild(grp);
@@ -456,7 +563,7 @@ function render(){
   updateProgress();
 }
 
-function makeItemRow(catCode, text, id){
+function makeItemRow(text, id){
   const row = document.createElement('div');
   row.className = 'item' + (state[id] ? ' done' : '');
   row.dataset.id = id;
@@ -467,13 +574,14 @@ function makeItemRow(catCode, text, id){
 
 function totalCounts(){
   let total = 0, done = 0;
-  DATA.forEach(cat => {
+  const currentTab = TABS.find(t => t.id === activeTab);
+  currentTab.categories.forEach(cat => {
     if(cat.items){
-      cat.items.forEach(t => { total++; if(state[slug(cat.code,t)]) done++; });
+      cat.items.forEach(t => { total++; if(state[slug(activeTab, cat.code, t)]) done++; });
     }
     if(cat.seasons){
       cat.seasons.forEach(s => s.items.forEach(t => {
-        total++; if(state[slug(cat.code, s.label+'-'+t)]) done++;
+        total++; if(state[slug(activeTab, cat.code, s.label+'-'+t)]) done++;
       }));
     }
   });
@@ -488,40 +596,42 @@ function updateProgress(){
   document.getElementById('progressLabel').textContent = done + ' / ' + total + ' packed';
 }
 
-function toggleItem(id){
+async function toggleItem(id){
   state[id] = !state[id];
   render();
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await setDoc(stateDocRef, { json: JSON.stringify(state) });
   }catch(e){
-    console.error('Storage error', e);
+    console.error('Sync error', e);
   }
 }
 
-function loadState(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      state = JSON.parse(raw);
-    }
-  }catch(e){
-    state = {};
-  }
+function startSync(){
   render();
+  onSnapshot(stateDocRef, (snap) => {
+    if(snap.exists()){
+      try{ state = JSON.parse(snap.data().json || '{}'); }catch(e){ state = {}; }
+    } else {
+      state = {};
+    }
+    render();
+  }, (err) => {
+    console.error('Sync listener error', err);
+  });
 }
 
-document.getElementById('resetBtn').addEventListener('click', () => {
-  if(!confirm('Clear all checked items on this device?')) return;
+document.getElementById('resetBtn').addEventListener('click', async () => {
+  if(!confirm('Clear all checked items for everyone?')) return;
   state = {};
   render();
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await setDoc(stateDocRef, { json: JSON.stringify(state) });
   }catch(e){
-    console.error('Storage error', e);
+    console.error('Sync error', e);
   }
 });
 
-loadState();
+startSync();
 </script>
 </body>
 </html>
