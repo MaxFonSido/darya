@@ -290,16 +290,117 @@
     .stop-code{font-size:10px;}
     .cat-title{font-size:16.5px;}
   }
+
+  /* ---- identity picker ---- */
+  .picker-overlay{
+    min-height:60vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:2rem 1rem;
+  }
+  .picker-card{
+    max-width:360px;
+    width:100%;
+    text-align:center;
+  }
+  .picker-eyebrow{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin:0 0 0.6rem;
+  }
+  .picker-title{
+    font-family:var(--font-display);
+    font-size:22px;
+    font-weight:500;
+    margin:0 0 1.6rem;
+  }
+  .picker-btn{
+    display:block;
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:var(--font-body);
+    font-size:15px;
+    font-weight:500;
+    padding:14px;
+    border-radius:4px;
+    cursor:pointer;
+    margin-bottom:10px;
+  }
+  .picker-btn:hover{border-color:var(--gold-dim); background:var(--surface-raised);}
+
+  /* ---- person switcher ---- */
+  .person-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:1rem;
+  }
+  .person-switch{
+    display:flex;
+    gap:6px;
+  }
+  .person-btn{
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    font-family:var(--font-mono);
+    font-size:12px;
+    padding:8px 14px;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .person-btn.active{
+    border-color:var(--teal-dim);
+    color:var(--teal);
+    background:var(--surface-raised);
+  }
+  .switch-profile-link{
+    background:none;
+    border:none;
+    color:var(--text-faint);
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:0;
+  }
+  .readonly-banner{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--gold);
+    border:1px solid var(--gold-dim);
+    border-radius:4px;
+    padding:8px 12px;
+    margin-bottom:1rem;
+  }
+  .item.readonly{cursor:default;}
+  .item.readonly:hover{background:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
 
+  <div id="pickerScreen"></div>
+  <div id="appScreen" style="display:none;">
+
+  <div class="person-row">
+    <div class="person-switch" id="personSwitch"></div>
+    <button class="switch-profile-link" id="switchProfileBtn">Not you? Switch profile</button>
+  </div>
+
+  <div id="readonlyBanner"></div>
+
   <div class="route">
     <p class="route-eyebrow">Route &amp; timing</p>
     <div class="route-line" id="routeLine"></div>
     <h1>Almaty trip checklist</h1>
-    <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — changes save automatically for both of you, in real time.</p>
+    <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — your list saves for you, and you can peek at each other's progress.</p>
   </div>
 
   <div class="tabs" id="tabNav"></div>
@@ -315,10 +416,11 @@
   <div id="categories"></div>
 
   <footer>
-    <span>Saved automatically · shared with Zarina</span>
+    <span id="footerSaveLabel">Saved automatically</span>
     <button class="reset-btn" id="resetBtn">Reset all</button>
   </footer>
 
+  </div>
 </div>
 
 <script type="module">
@@ -336,7 +438,19 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const stateDocRef = doc(db, "checklist", "shared");
+
+const PEOPLE = [
+  {id:'kiarash', label:'Kiarash'},
+  {id:'zarina', label:'Zarina'}
+];
+
+function docRefFor(personId){
+  return doc(db, "checklist", personId);
+}
+
+let identity = localStorage.getItem('checklist-identity');
+let viewing = identity;
+let unsubscribe = null;
 const TABS = [
   {
     id:'packing', label:'Packing checklist',
@@ -486,6 +600,30 @@ function checkIcon(){
 }
 
 function render(){
+  const personSwitch = document.getElementById('personSwitch');
+  personSwitch.innerHTML = '';
+  PEOPLE.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'person-btn' + (p.id === viewing ? ' active' : '');
+    btn.textContent = p.id === identity ? 'My list' : p.label + '\u2019s list';
+    btn.addEventListener('click', () => { switchViewing(p.id); });
+    personSwitch.appendChild(btn);
+  });
+
+  const banner = document.getElementById('readonlyBanner');
+  const footerLabel = document.getElementById('footerSaveLabel');
+  const resetBtn = document.getElementById('resetBtn');
+  if(viewing !== identity){
+    const partner = PEOPLE.find(p => p.id === viewing);
+    banner.innerHTML = '<div class="readonly-banner">Viewing ' + partner.label + '\u2019s list — read-only</div>';
+    footerLabel.textContent = 'Viewing ' + partner.label + '\u2019s progress';
+    resetBtn.style.display = 'none';
+  } else {
+    banner.innerHTML = '';
+    footerLabel.textContent = 'Saved automatically for you';
+    resetBtn.style.display = '';
+  }
+
   const routeLine = document.getElementById('routeLine');
   const stops = [
     {code:'IAD', active:false},
@@ -564,11 +702,14 @@ function render(){
 }
 
 function makeItemRow(text, id){
+  const editable = (viewing === identity);
   const row = document.createElement('div');
-  row.className = 'item' + (state[id] ? ' done' : '');
+  row.className = 'item' + (state[id] ? ' done' : '') + (editable ? '' : ' readonly');
   row.dataset.id = id;
   row.innerHTML = '<div class="box">' + checkIcon() + '</div><div class="item-text">' + text + '</div>';
-  row.addEventListener('click', () => toggleItem(id));
+  if(editable){
+    row.addEventListener('click', () => toggleItem(id));
+  }
   return row;
 }
 
@@ -597,18 +738,26 @@ function updateProgress(){
 }
 
 async function toggleItem(id){
+  if(viewing !== identity) return;
   state[id] = !state[id];
   render();
   try{
-    await setDoc(stateDocRef, { json: JSON.stringify(state) });
+    await setDoc(docRefFor(identity), { json: JSON.stringify(state) });
   }catch(e){
     console.error('Sync error', e);
   }
 }
 
-function startSync(){
+function switchViewing(personId){
+  if(personId === viewing) return;
+  viewing = personId;
+  subscribeToViewing();
+}
+
+function subscribeToViewing(){
+  if(unsubscribe){ unsubscribe(); unsubscribe = null; }
   render();
-  onSnapshot(stateDocRef, (snap) => {
+  unsubscribe = onSnapshot(docRefFor(viewing), (snap) => {
     if(snap.exists()){
       try{ state = JSON.parse(snap.data().json || '{}'); }catch(e){ state = {}; }
     } else {
@@ -621,17 +770,56 @@ function startSync(){
 }
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
-  if(!confirm('Clear all checked items for everyone?')) return;
+  if(viewing !== identity) return;
+  if(!confirm('Clear all checked items on your list?')) return;
   state = {};
   render();
   try{
-    await setDoc(stateDocRef, { json: JSON.stringify(state) });
+    await setDoc(docRefFor(identity), { json: JSON.stringify(state) });
   }catch(e){
     console.error('Sync error', e);
   }
 });
 
-startSync();
+function showPicker(){
+  document.getElementById('appScreen').style.display = 'none';
+  const pickerScreen = document.getElementById('pickerScreen');
+  pickerScreen.style.display = '';
+  pickerScreen.innerHTML =
+    '<div class="picker-overlay"><div class="picker-card">' +
+    '<p class="picker-eyebrow">Almaty trip checklist</p>' +
+    '<h1 class="picker-title">Who\u2019s checking the list?</h1>' +
+    PEOPLE.map(p => '<button class="picker-btn" data-person="' + p.id + '">' + p.label + '</button>').join('') +
+    '</div></div>';
+  pickerScreen.querySelectorAll('.picker-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      identity = btn.dataset.person;
+      localStorage.setItem('checklist-identity', identity);
+      viewing = identity;
+      enterApp();
+    });
+  });
+}
+
+function enterApp(){
+  document.getElementById('pickerScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = '';
+  subscribeToViewing();
+}
+
+document.getElementById('switchProfileBtn').addEventListener('click', () => {
+  if(unsubscribe){ unsubscribe(); unsubscribe = null; }
+  localStorage.removeItem('checklist-identity');
+  identity = null;
+  viewing = null;
+  showPicker();
+});
+
+if(identity && PEOPLE.some(p => p.id === identity)){
+  enterApp();
+} else {
+  showPicker();
+}
 </script>
 </body>
 </html>
