@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IAD → ALA — trip checklist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12141C;
+    --surface:#1B1E2A;
+    --surface-raised:#20242F;
+    --border:#2B2F3D;
+    --border-soft:#242835;
+    --text:#EDEAE0;
+    --text-dim:#9498A8;
+    --text-faint:#5D6273;
+    --gold:#C89B3C;
+    --gold-dim:#8A6B2D;
+    --teal:#3FA796;
+    --teal-dim:#2A5F58;
+    --rust:#C1583A;
+    --rust-dim:#7A3B29;
+    --font-display:'Fraunces', serif;
+    --font-body:'Inter', sans-serif;
+    --font-mono:'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--text);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:760px;
+    margin:0 auto;
+    padding:2.5rem 1.5rem 6rem;
+  }
+
+  /* ---- route header ---- */
+  .route{
+    position:relative;
+    padding:1.75rem 1.25rem 1.5rem;
+    margin-bottom:2rem;
+    border:1px solid var(--border);
+    border-radius:4px;
+    background:var(--surface);
+  }
+  .route-eyebrow{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-faint);
+    margin:0 0 1.1rem;
+  }
+  .route-line{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    position:relative;
+  }
+  .route-line::before{
+    content:'';
+    position:absolute;
+    top:9px;
+    left:9px;
+    right:9px;
+    height:1px;
+    background:repeating-linear-gradient(to right, var(--text-faint) 0 4px, transparent 4px 8px);
+  }
+  .stop{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    background:var(--surface);
+    padding:0 4px;
+  }
+  .stop-dot{
+    width:19px;height:19px;
+    border-radius:50%;
+    border:2px solid var(--text-faint);
+    background:var(--ink);
+  }
+  .stop.active .stop-dot{border-color:var(--gold); background:var(--gold);}
+  .stop-code{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--text-dim);
+  }
+  .stop.active .stop-code{color:var(--gold); font-weight:500;}
+  h1{
+    font-family:var(--font-display);
+    font-weight:500;
+    font-size:26px;
+    margin:1.4rem 0 0.3rem;
+    letter-spacing:-0.01em;
+  }
+  .route-sub{
+    font-size:14px;
+    color:var(--text-dim);
+    margin:0;
+    line-height:1.6;
+  }
+
+  /* ---- overall progress ---- */
+  .progress-bar-outer{
+    position:sticky;
+    top:0;
+    z-index:5;
+    background:var(--ink);
+    padding:12px 0 16px;
+    margin-bottom:0.5rem;
+  }
+  .progress-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--text-dim);
+  }
+  .progress-track{
+    flex:1;
+    height:6px;
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    background:var(--gold);
+    width:0%;
+    transition:width 0.4s ease;
+  }
+
+  /* ---- category cards ---- */
+  .category{
+    border:1px solid var(--border);
+    border-radius:4px;
+    background:var(--surface);
+    margin-bottom:1.1rem;
+    overflow:hidden;
+  }
+  .category.urgent{border-color:var(--rust-dim);}
+  .cat-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:1.1rem 1.25rem;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .stamp{
+    flex-shrink:0;
+    width:46px;height:46px;
+    border-radius:50%;
+    border:1.5px dashed var(--gold-dim);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--font-mono);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0.03em;
+    color:var(--gold);
+    transform:rotate(-6deg);
+  }
+  .category.urgent .stamp{border-color:var(--rust); color:var(--rust);}
+  .cat-titles{flex:1; min-width:0;}
+  .cat-title{
+    font-family:var(--font-display);
+    font-size:18px;
+    font-weight:500;
+    margin:0 0 2px;
+  }
+  .cat-note{
+    font-size:12.5px;
+    color:var(--text-faint);
+    margin:0;
+  }
+  .category.urgent .cat-note{color:var(--rust);}
+  .cat-ring{
+    flex-shrink:0;
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--text-dim);
+    text-align:right;
+    min-width:38px;
+  }
+
+  .items{padding:0.4rem 0.6rem 0.7rem;}
+  .item{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    padding:0.6rem 0.65rem;
+    border-radius:3px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .item:hover{background:var(--surface-raised);}
+  .box{
+    flex-shrink:0;
+    width:18px;height:18px;
+    margin-top:2px;
+    border:1.5px solid var(--text-faint);
+    border-radius:3px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:border-color 0.15s;
+  }
+  .item.done .box{border-color:var(--teal); background:var(--teal-dim);}
+  .box svg{width:11px;height:11px; opacity:0; transition:opacity 0.15s;}
+  .item.done .box svg{opacity:1;}
+  .item-text{
+    font-size:14.5px;
+    line-height:1.5;
+    color:var(--text);
+  }
+  .item.done .item-text{color:var(--text-faint); text-decoration:line-through; text-decoration-color:var(--text-faint);}
+
+  /* clothing season groups */
+  .season-group{padding:0 0.6rem 0.4rem;}
+  .season-label{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--gold);
+    padding:0.7rem 0.65rem 0.2rem;
+  }
+
+  footer{
+    margin-top:2.2rem;
+    padding-top:1.3rem;
+    border-top:1px dashed var(--border);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--text-faint);
+  }
+  .reset-btn{
+    background:none;
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    font-family:var(--font-mono);
+    font-size:11px;
+    padding:6px 12px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .reset-btn:hover{border-color:var(--rust); color:var(--rust);}
+
+  @media (max-width:480px){
+    .stop-code{font-size:10px;}
+    .cat-title{font-size:16.5px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="route">
+    <p class="route-eyebrow">Route &amp; timing</p>
+    <div class="route-line" id="routeLine"></div>
+    <h1>Almaty trip checklist</h1>
+    <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — changes save automatically on this device.</p>
+  </div>
+
+  <div class="progress-bar-outer">
+    <div class="progress-row">
+      <span id="progressLabel">0 / 0 packed</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <span id="progressPct">0%</span>
+    </div>
+  </div>
+
+  <div id="categories"></div>
+
+  <footer>
+    <span>Saved automatically on this device</span>
+    <button class="reset-btn" id="resetBtn">Reset all</button>
+  </footer>
+
+</div>
+
+<script>
+const DATA = [
+  {
+    code:'DOC', title:'Documents & legal', urgent:true,
+    note:'Handle before flying — some steps take weeks',
+    items:[
+      'Passports — both of us',
+      "Extra passport photos (for baby's later)",
+      'Marriage certificate — original + copies',
+      'Surrogacy contract / gestational carrier agreement',
+      'Kazakhstan-based surrogacy or fertility lawyer contact',
+      'US Embassy Almaty consular agency info (CRBA process)',
+      'DNA test arrangement confirmed for citizenship proof',
+      'Copies of our own birth certificates',
+      'Travel & medical insurance details',
+      "Surrogate's medical contacts & hospital info"
+    ]
+  },
+  {
+    code:'FED', title:'Baby feeding',
+    items:[
+      'Kabrita / chosen formula — full supply',
+      'Bottles + extra nipples',
+      'Formula travel dispenser containers',
+      'Induced lactation supplements/meds (if applicable)',
+      'Pump + extra flanges + storage bags',
+      'Manual backup pump'
+    ]
+  },
+  {
+    code:'GER', title:'Baby gear',
+    items:[
+      'Going-home outfit',
+      'Several newborn / 0–3mo outfits (light layers)',
+      'Swaddles + muslin blankets',
+      'Burp cloths',
+      'Car seat (confirm what\u2019s provided locally)',
+      'Baby carrier / wrap for Taraz travel',
+      'Diapers — preferred brand, generous supply',
+      'Travel wipes',
+      'Digital thermometer',
+      'Infant nail clippers',
+      'Gas drops',
+      'Baby-safe fever reducer'
+    ]
+  },
+  {
+    code:'HLT', title:'Health & comfort',
+    items:[
+      'Personal medications — full 3-month supply',
+      'Copies of prescriptions',
+      'Postpartum-adjacent recovery items',
+      'Easy nursing-style tops (if inducing lactation)',
+      'Vitamins/supplements for lactation protocol',
+      'Basic first aid kit',
+      'Electrolyte packets'
+    ]
+  },
+  {
+    code:'SZN', title:'Clothing by season',
+    seasons:[
+      {label:'August', items:['Light layers, breathable fabrics','One light rain jacket']},
+      {label:'September', items:['Sweaters, a warm layer','Closed-toe shoes']},
+      {label:'October', items:['Real winter coat','Gloves','Waterproof boots']}
+    ]
+  },
+  {
+    code:'TRZ', title:'For the Taraz visit',
+    items:[
+      'Gift for family — something distinctly American',
+      'Modest, comfortable clothing for family visits',
+      'Baby photos/updates to share'
+    ]
+  },
+  {
+    code:'EXT', title:'Practical extras',
+    items:[
+      'Universal power adapter (Type C/F, 220V)',
+      'Unlocked phone or local SIM plan',
+      'Cash in tenge for outside Almaty'
+    ]
+  }
+];
+
+const STORAGE_KEY = 'checklist-state';
+let state = {};
+
+function slug(catCode, text){
+  return catCode + ':' + text.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
+}
+
+function checkIcon(){
+  return '<svg viewBox="0 0 12 12" fill="none"><path d="M2 6.2L4.7 9L10 2.5" stroke="#3FA796" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+function render(){
+  const routeLine = document.getElementById('routeLine');
+  const stops = [
+    {code:'IAD', active:false},
+    {code:'ALA', active:true},
+    {code:'TSZ', active:false},
+    {code:'IAD', active:false}
+  ];
+  routeLine.innerHTML = stops.map(s =>
+    '<div class="stop ' + (s.active?'active':'') + '"><div class="stop-dot"></div><div class="stop-code">' + s.code + '</div></div>'
+  ).join('');
+
+  const container = document.getElementById('categories');
+  container.innerHTML = '';
+
+  DATA.forEach(cat => {
+    const catEl = document.createElement('div');
+    catEl.className = 'category' + (cat.urgent ? ' urgent' : '');
+
+    let allIds = [];
+    if(cat.items){ allIds = cat.items.map(t => slug(cat.code, t)); }
+    if(cat.seasons){ cat.seasons.forEach(s => s.items.forEach(t => allIds.push(slug(cat.code, s.label+'-'+t)))); }
+    const doneCount = allIds.filter(id => state[id]).length;
+
+    const head = document.createElement('div');
+    head.className = 'cat-head';
+    head.innerHTML =
+      '<div class="stamp">' + cat.code + '</div>' +
+      '<div class="cat-titles"><p class="cat-title">' + cat.title + '</p>' +
+      (cat.note ? '<p class="cat-note">' + cat.note + '</p>' : '') + '</div>' +
+      '<div class="cat-ring">' + doneCount + '/' + allIds.length + '</div>';
+    catEl.appendChild(head);
+
+    if(cat.items){
+      const itemsWrap = document.createElement('div');
+      itemsWrap.className = 'items';
+      cat.items.forEach(text => {
+        itemsWrap.appendChild(makeItemRow(cat.code, text, slug(cat.code, text)));
+      });
+      catEl.appendChild(itemsWrap);
+    }
+
+    if(cat.seasons){
+      cat.seasons.forEach(s => {
+        const grp = document.createElement('div');
+        grp.className = 'season-group';
+        const label = document.createElement('div');
+        label.className = 'season-label';
+        label.textContent = s.label;
+        grp.appendChild(label);
+        const itemsWrap = document.createElement('div');
+        itemsWrap.className = 'items';
+        itemsWrap.style.padding = '0';
+        s.items.forEach(text => {
+          itemsWrap.appendChild(makeItemRow(cat.code, text, slug(cat.code, s.label+'-'+text)));
+        });
+        grp.appendChild(itemsWrap);
+        catEl.appendChild(grp);
+      });
+    }
+
+    container.appendChild(catEl);
+  });
+
+  updateProgress();
+}
+
+function makeItemRow(catCode, text, id){
+  const row = document.createElement('div');
+  row.className = 'item' + (state[id] ? ' done' : '');
+  row.dataset.id = id;
+  row.innerHTML = '<div class="box">' + checkIcon() + '</div><div class="item-text">' + text + '</div>';
+  row.addEventListener('click', () => toggleItem(id));
+  return row;
+}
+
+function totalCounts(){
+  let total = 0, done = 0;
+  DATA.forEach(cat => {
+    if(cat.items){
+      cat.items.forEach(t => { total++; if(state[slug(cat.code,t)]) done++; });
+    }
+    if(cat.seasons){
+      cat.seasons.forEach(s => s.items.forEach(t => {
+        total++; if(state[slug(cat.code, s.label+'-'+t)]) done++;
+      }));
+    }
+  });
+  return {total, done};
+}
+
+function updateProgress(){
+  const {total, done} = totalCounts();
+  const pct = total ? Math.round((done/total)*100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressLabel').textContent = done + ' / ' + total + ' packed';
+}
+
+function toggleItem(id){
+  state[id] = !state[id];
+  render();
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    console.error('Storage error', e);
+  }
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      state = JSON.parse(raw);
+    }
+  }catch(e){
+    state = {};
+  }
+  render();
+}
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if(!confirm('Clear all checked items on this device?')) return;
+  state = {};
+  render();
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    console.error('Storage error', e);
+  }
+});
+
+loadState();
+</script>
+</body>
+</html>
