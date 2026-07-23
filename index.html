@@ -372,6 +372,75 @@
   }
   .item.readonly{cursor:default;}
   .item.readonly:hover{background:none;}
+
+  /* ---- content editing ---- */
+  .edit-row{
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:0.6rem;
+  }
+  .edit-toggle-btn{
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    font-family:var(--font-mono);
+    font-size:11px;
+    padding:6px 12px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .edit-toggle-btn.active{
+    border-color:var(--gold-dim);
+    color:var(--gold);
+    background:var(--surface-raised);
+  }
+  .item-delete{
+    margin-left:auto;
+    background:none;
+    border:none;
+    color:var(--text-faint);
+    font-size:18px;
+    line-height:1;
+    cursor:pointer;
+    padding:0 4px;
+  }
+  .item-delete:hover{color:var(--rust);}
+  .item-edit-input{
+    flex:1;
+    font-size:14.5px;
+    font-family:var(--font-body);
+    color:var(--text);
+    border:1px solid var(--gold-dim);
+    border-radius:3px;
+    padding:4px 6px;
+    background:var(--surface);
+  }
+  .add-item-row{
+    display:flex;
+    gap:8px;
+    padding:0.3rem 0.65rem 0.7rem;
+  }
+  .add-item-input{
+    flex:1;
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:8px 10px;
+    font-family:var(--font-body);
+    font-size:13.5px;
+    color:var(--text);
+  }
+  .add-item-btn{
+    background:var(--surface);
+    border:1px solid var(--gold-dim);
+    color:var(--gold);
+    font-family:var(--font-mono);
+    font-size:12px;
+    padding:0 14px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .add-item-btn:hover{background:var(--surface-raised);}
 </style>
 </head>
 <body>
@@ -400,6 +469,10 @@
       <h1>Almaty trip checklist</h1>
       <p class="route-sub">Baby due ~Aug 15. Based in Almaty through October, with a few days in Taraz. Tap any item to check it off — your list saves for you, and you can peek at each other's progress.</p>
     </div>
+  </div>
+
+  <div class="edit-row">
+    <button class="edit-toggle-btn" id="editToggleBtn" type="button">Edit content</button>
   </div>
 
   <div class="tabs" id="tabNav"></div>
@@ -447,11 +520,13 @@ function docRefFor(personId){
   return doc(db, "checklist", personId);
 }
 const bannerDocRef = doc(db, "checklist", "banner");
+const contentDocRef = doc(db, "checklist", "content");
 
 let identity = localStorage.getItem('checklist-identity');
 let viewing = identity;
 let unsubscribe = null;
-const TABS = [
+let editMode = false;
+const DEFAULT_TABS = [
   {
     id:'packing', label:'Packing checklist',
     categories:[
@@ -587,13 +662,68 @@ const TABS = [
   }
 ];
 
+let content = null;
+
+function idBase(prefix, text){
+  return prefix + ':' + text.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
+}
+
+function buildDefaultContent(){
+  const used = new Set();
+  const uniqueId = (prefix, text) => {
+    let id = idBase(prefix, text), n = 2;
+    while(used.has(id)){ id = idBase(prefix, text) + '-' + n; n++; }
+    used.add(id);
+    return id;
+  };
+  return {
+    tabs: DEFAULT_TABS.map(tab => ({
+      id: tab.id,
+      label: tab.label,
+      categories: tab.categories.map(cat => ({
+        code: cat.code,
+        title: cat.title,
+        urgent: !!cat.urgent,
+        note: cat.note || null,
+        items: cat.items ? cat.items.map(text => ({ id: uniqueId(tab.id+':'+cat.code, text), text })) : undefined,
+        seasons: cat.seasons ? cat.seasons.map(s => ({
+          label: s.label,
+          items: s.items.map(text => ({ id: uniqueId(tab.id+':'+cat.code+':'+s.label, text), text }))
+        })) : undefined
+      }))
+    }))
+  };
+}
+
+function genId(){
+  return 'item-' + Math.random().toString(36).slice(2,9);
+}
+
+async function persistContent(){
+  try{
+    await setDoc(contentDocRef, { json: JSON.stringify(content) });
+  }catch(e){
+    console.error('Content sync error', e);
+  }
+}
+
+function subscribeToContent(){
+  onSnapshot(contentDocRef, (snap) => {
+    if(snap.exists()){
+      try{ content = JSON.parse(snap.data().json); }catch(e){ content = buildDefaultContent(); }
+    } else {
+      content = buildDefaultContent();
+      persistContent();
+    }
+    render();
+  }, (err) => {
+    console.error('Content sync listener error', err);
+  });
+}
+
 const STORAGE_KEY = 'checklist-state';
 let state = {};
-let activeTab = TABS[0].id;
-
-function slug(tabId, catCode, text){
-  return tabId + ':' + catCode + ':' + text.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
-}
+let activeTab = DEFAULT_TABS[0].id;
 
 function checkIcon(){
   return '<svg viewBox="0 0 12 12" fill="none"><path d="M2 6.2L4.7 9L10 2.5" stroke="#3E8B4A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -613,20 +743,26 @@ function render(){
   const banner = document.getElementById('readonlyBanner');
   const footerLabel = document.getElementById('footerSaveLabel');
   const resetBtn = document.getElementById('resetBtn');
+  const editToggleBtn = document.getElementById('editToggleBtn');
   if(viewing !== identity){
     const partner = PEOPLE.find(p => p.id === viewing);
     banner.innerHTML = '<div class="readonly-banner">Viewing ' + partner.label + '\u2019s list — read-only</div>';
     footerLabel.textContent = 'Viewing ' + partner.label + '\u2019s progress';
     resetBtn.style.display = 'none';
+    editToggleBtn.style.display = 'none';
+    editMode = false;
   } else {
     banner.innerHTML = '';
     footerLabel.textContent = 'Saved automatically for you';
     resetBtn.style.display = '';
+    editToggleBtn.style.display = '';
+    editToggleBtn.textContent = editMode ? 'Done editing' : 'Edit content';
+    editToggleBtn.classList.toggle('active', editMode);
   }
 
   const tabNav = document.getElementById('tabNav');
   tabNav.innerHTML = '';
-  TABS.forEach(tab => {
+  DEFAULT_TABS.forEach(tab => {
     const btn = document.createElement('button');
     btn.className = 'tab-btn' + (tab.id === activeTab ? ' active' : '');
     btn.textContent = tab.label;
@@ -634,17 +770,26 @@ function render(){
     tabNav.appendChild(btn);
   });
 
-  const currentTab = TABS.find(t => t.id === activeTab);
   const container = document.getElementById('categories');
   container.innerHTML = '';
+
+  if(!content){
+    container.innerHTML = '<p style="font-family:var(--font-mono);font-size:12px;color:var(--text-faint);padding:1rem;">Loading checklist…</p>';
+    updateProgress();
+    return;
+  }
+
+  const currentTab = content.tabs.find(t => t.id === activeTab);
+  if(!currentTab){ updateProgress(); return; }
+  const canEdit = editMode && (viewing === identity);
 
   currentTab.categories.forEach(cat => {
     const catEl = document.createElement('div');
     catEl.className = 'category' + (cat.urgent ? ' urgent' : '');
 
     let allIds = [];
-    if(cat.items){ allIds = cat.items.map(t => slug(activeTab, cat.code, t)); }
-    if(cat.seasons){ cat.seasons.forEach(s => s.items.forEach(t => allIds.push(slug(activeTab, cat.code, s.label+'-'+t)))); }
+    if(cat.items){ allIds = cat.items.map(it => it.id); }
+    if(cat.seasons){ cat.seasons.forEach(s => s.items.forEach(it => allIds.push(it.id))); }
     const doneCount = allIds.filter(id => state[id]).length;
 
     const head = document.createElement('div');
@@ -659,10 +804,11 @@ function render(){
     if(cat.items){
       const itemsWrap = document.createElement('div');
       itemsWrap.className = 'items';
-      cat.items.forEach(text => {
-        itemsWrap.appendChild(makeItemRow(text, slug(activeTab, cat.code, text)));
+      cat.items.forEach(itemObj => {
+        itemsWrap.appendChild(makeItemRow(itemObj, cat.items));
       });
       catEl.appendChild(itemsWrap);
+      if(canEdit){ catEl.appendChild(makeAddRow(cat.items)); }
     }
 
     if(cat.seasons){
@@ -676,10 +822,11 @@ function render(){
         const itemsWrap = document.createElement('div');
         itemsWrap.className = 'items';
         itemsWrap.style.padding = '0';
-        s.items.forEach(text => {
-          itemsWrap.appendChild(makeItemRow(text, slug(activeTab, cat.code, s.label+'-'+text)));
+        s.items.forEach(itemObj => {
+          itemsWrap.appendChild(makeItemRow(itemObj, s.items));
         });
         grp.appendChild(itemsWrap);
+        if(canEdit){ grp.appendChild(makeAddRow(s.items)); }
         catEl.appendChild(grp);
       });
     }
@@ -690,28 +837,111 @@ function render(){
   updateProgress();
 }
 
-function makeItemRow(text, id){
+function makeItemRow(itemObj, parentArray){
   const editable = (viewing === identity);
+  const canEdit = editable && editMode;
+  const id = itemObj.id;
   const row = document.createElement('div');
   row.className = 'item' + (state[id] ? ' done' : '') + (editable ? '' : ' readonly');
   row.dataset.id = id;
-  row.innerHTML = '<div class="box">' + checkIcon() + '</div><div class="item-text">' + text + '</div>';
+
+  const box = document.createElement('div');
+  box.className = 'box';
+  box.innerHTML = checkIcon();
   if(editable){
+    box.addEventListener('click', (e) => { e.stopPropagation(); toggleItem(id); });
+  }
+
+  const textEl = document.createElement('div');
+  textEl.className = 'item-text';
+  textEl.textContent = itemObj.text;
+
+  row.appendChild(box);
+  row.appendChild(textEl);
+
+  if(canEdit){
+    textEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startInlineEdit(textEl, itemObj);
+    });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'item-delete';
+    delBtn.type = 'button';
+    delBtn.textContent = '\u00d7';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parentArray.indexOf(itemObj);
+      if(idx > -1){ parentArray.splice(idx, 1); }
+      persistContent();
+      render();
+    });
+    row.appendChild(delBtn);
+  } else if(editable){
     row.addEventListener('click', () => toggleItem(id));
   }
+
+  return row;
+}
+
+function startInlineEdit(textEl, itemObj){
+  const input = document.createElement('input');
+  input.className = 'item-edit-input';
+  input.value = itemObj.text;
+  textEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if(done) return;
+    done = true;
+    const val = input.value.trim();
+    if(val){ itemObj.text = val; }
+    persistContent();
+    render();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ input.blur(); }
+    if(e.key === 'Escape'){ done = true; render(); }
+  });
+}
+
+function makeAddRow(parentArray){
+  const row = document.createElement('div');
+  row.className = 'add-item-row';
+  const input = document.createElement('input');
+  input.className = 'add-item-input';
+  input.placeholder = 'Add item\u2026';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'add-item-btn';
+  btn.textContent = 'Add';
+  const submit = () => {
+    const val = input.value.trim();
+    if(!val) return;
+    parentArray.push({ id: genId(), text: val });
+    persistContent();
+    render();
+  };
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ submit(); } });
+  row.appendChild(input);
+  row.appendChild(btn);
   return row;
 }
 
 function totalCounts(){
   let total = 0, done = 0;
-  const currentTab = TABS.find(t => t.id === activeTab);
+  if(!content) return {total, done};
+  const currentTab = content.tabs.find(t => t.id === activeTab);
+  if(!currentTab) return {total, done};
   currentTab.categories.forEach(cat => {
     if(cat.items){
-      cat.items.forEach(t => { total++; if(state[slug(activeTab, cat.code, t)]) done++; });
+      cat.items.forEach(it => { total++; if(state[it.id]) done++; });
     }
     if(cat.seasons){
-      cat.seasons.forEach(s => s.items.forEach(t => {
-        total++; if(state[slug(activeTab, cat.code, s.label+'-'+t)]) done++;
+      cat.seasons.forEach(s => s.items.forEach(it => {
+        total++; if(state[it.id]) done++;
       }));
     }
   });
@@ -868,7 +1098,13 @@ function initBanner(){
   });
 }
 
+document.getElementById('editToggleBtn').addEventListener('click', () => {
+  editMode = !editMode;
+  render();
+});
+
 initBanner();
+subscribeToContent();
 
 if(identity && PEOPLE.some(p => p.id === identity)){
   enterApp();
